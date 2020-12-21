@@ -1,0 +1,44 @@
+version: "3"
+
+services:
+  mkcert:
+    image: vishnunair/docker-mkcert
+
+    environment:
+      domain: localhost
+
+    volumes:
+      - ./.volumes/mkcert-data:/root/.local/share/mkcert
+
+  consul:
+    image: consul:latest
+
+    command: agent -config-file=/consul/config.hcl
+
+    ports:
+      - "8500:8500"
+    volumes:
+      - ./.volumes/mkcert-data:/certs
+      - ./config/consul.hcl:/consul/config.hcl
+      - ./.volumes/consul/data:/consul/data
+
+  vault:
+    image: vault:latest
+
+    command: server -config=/vault/config.hcl
+    cap_add:
+      - IPC_LOCK
+    depends_on:
+      - consul
+    environment:
+      VAULT_ADDR: "http://127.0.0.1:8200"
+      VAULT_API_ADDR: "http://127.0.0.1:8200"
+
+    ports:
+      - 8200:8200
+    volumes:
+      - ./.volumes/mkcert-data:/certs
+      - ./config/vault.hcl:/vault/config.hcl
+      - ./.volumes/vault/policies:/vault/policies
+      - ./.volumes/vault/data:/vault/data
+      - ./.volumes/vault/logs:/vault/logs
