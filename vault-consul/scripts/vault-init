@@ -1,6 +1,8 @@
-#!/bin/bash
+#!/bin/sh -e
 
-output=`docker run --cap-add IPC_LOCK --rm -e VAULT_ADDR=http://host.docker.internal:8200 vault vault operator init`
+echo "Initializing vault..."
+
+output=`vault operator init`
 
 unseal_key_1=`echo "${output}" | grep "Unseal Key 1" | awk -F'Unseal Key 1: ' '{print $2}'`
 unseal_key_2=`echo "${output}" | grep "Unseal Key 2" | awk -F'Unseal Key 2: ' '{print $2}'`
@@ -10,16 +12,20 @@ unseal_key_5=`echo "${output}" | grep "Unseal Key 5" | awk -F'Unseal Key 5: ' '{
 
 root_token=`echo "${output}" | grep "Initial Root Token" | awk -F'Initial Root Token: ' '{print $2}'`
 
-echo "${unseal_key_1}" > secrets/vault_unseal_key_1
-echo "${unseal_key_2}" > secrets/vault_unseal_key_2
-echo "${unseal_key_3}" > secrets/vault_unseal_key_3
-echo "${unseal_key_4}" > secrets/vault_unseal_key_4
-echo "${unseal_key_5}" > secrets/vault_unseal_key_5
+echo "${unseal_key_1}" > /secrets/vault_unseal_key_1
+echo "${unseal_key_2}" > /secrets/vault_unseal_key_2
+echo "${unseal_key_3}" > /secrets/vault_unseal_key_3
+echo "${unseal_key_4}" > /secrets/vault_unseal_key_4
+echo "${unseal_key_5}" > /secrets/vault_unseal_key_5
 
 echo "${root_token}" > secrets/vault_root_token
 
-UNSEAL_API="http://localhost:8200/v1/sys/unseal"
+vault operator unseal ${unseal_key_1} > /dev/null
+vault operator unseal ${unseal_key_2} > /dev/null
+vault operator unseal ${unseal_key_3} > /dev/null
 
-curl -d "{\"key\": \"${unseal_key_1}\"}" -X PUT $UNSEAL_API
-curl -d "{\"key\": \"${unseal_key_2}\"}" -X PUT $UNSEAL_API
-curl -d "{\"key\": \"${unseal_key_3}\"}" -X PUT $UNSEAL_API
+export VAULT_TOKEN=${root_token}
+vault secrets enable -path=secret/ kv
+
+echo "Vault initialized!"
+touch /init

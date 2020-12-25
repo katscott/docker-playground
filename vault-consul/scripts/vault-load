@@ -1,0 +1,13 @@
+#!/bin/sh -e
+
+export TEST="{{DOCKER-SECRET:test}}"
+source /scripts/secrets
+
+export VAULT_TOKEN=`cat /secrets/vault_root_token`
+
+vault kv put secret/client test=${TEST}
+
+# alternate: load via mounted snapshot
+# vault operator raft snapshot restore <filename>
+
+touch /load

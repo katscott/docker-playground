@@ -2,18 +2,32 @@ version: "3"
 
 services:
   mkcert:
-    image: vishnunair/docker-mkcert
-
-    environment:
-      domain: localhost
+    build:
+      context: .
+      dockerfile: Dockerfile.mkcert
 
     volumes:
       - ./.volumes/mkcert-data:/root/.local/share/mkcert
 
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "[ ! -f /root/.local/share/mkcert/vault.pem ] && exit 1 || exit 0",
+        ]
+      interval: 5s
+      timeout: 1s
+      start_period: 5s
+
+    command:
+      [
+        "/bin/sh",
+        "-c",
+        "mkcert -install && mkcert -key-file vault-key.pem -cert-file vault.pem localhost vault && tail -f -n0 /etc/hosts",
+      ]
+
   consul:
     image: consul:latest
-
-    command: agent -config-file=/consul/config.hcl
 
     ports:
       - "8500:8500"
@@ -22,17 +36,20 @@ services:
       - ./config/consul.hcl:/consul/config.hcl
       - ./.volumes/consul/data:/consul/data
 
-  vault:
-    image: vault:latest
+    command: agent -config-file=/consul/config.hcl
 
-    command: server -config=/vault/config.hcl
+  vault:
+    build:
+      context: .
+      dockerfile: Dockerfile.vault
+
     cap_add:
       - IPC_LOCK
     depends_on:
-      - consul
-    environment:
-      VAULT_ADDR: "http://127.0.0.1:8200"
-      VAULT_API_ADDR: "http://127.0.0.1:8200"
+      mkcert:
+        condition: service_healthy
+      consul:
+        condition: service_started
 
     ports:
       - 8200:8200
@@ -42,3 +59,77 @@ services:
       - ./.volumes/vault/policies:/vault/policies
       - ./.volumes/vault/data:/vault/data
       - ./.volumes/vault/logs:/vault/logs
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -f https://localhost:8200/v1/sys/seal-status || exit 1",
+        ]
+      interval: 10s
+      timeout: 10s
+      start_period: 60s
+
+    command: server -config=/vault/config.hcl
+    environment:
+      VAULT_ADDR: "http://127.0.0.1:8200"
+      VAULT_API_ADDR: "http://127.0.0.1:8200"
+      SSL_CERT_FILE: /certs/rootCA.pem
+
+  init:
+    build:
+      context: .
+      dockerfile: Dockerfile.vault
+
+    depends_on:
+      vault:
+        condition: service_healthy
+    volumes:
+      - ./.volumes/mkcert-data:/certs
+      - ./scripts:/scripts
+      - ./secrets:/secrets # specifically for writing out the vault generated secrets
+
+    healthcheck:
+      test: ["CMD-SHELL", "[ ! -f /load ] && exit 1 || exit 0"]
+      interval: 10s
+      timeout: 1s
+      start_period: 5s
+
+    command:
+      [
+        "/bin/sh",
+        "-c",
+        "/scripts/vault-init && /scripts/vault-load && tail -f -n0 /etc/hosts",
+      ]
+    environment:
+      VAULT_ADDR: "https://vault:8200"
+      VAULT_API_ADDR: "https://vault:8200"
+      VAULT_CACERT: /certs/rootCA.pem
+    secrets:
+      - test
+
+  client:
+    build:
+      context: .
+      dockerfile: Dockerfile.client
+
+    depends_on:
+      init:
+        condition: service_healthy
+    volumes:
+      - ./.volumes/mkcert-data:/certs
+      - ./scripts:/scripts
+
+    command:
+      ["/bin/sh", "-c", "/scripts/client-entrypoint && tail -f -n0 /etc/hosts"]
+    environment:
+      CURL_CA_BUNDLE: /certs/rootCA.pem
+      VAULT_TOKEN: "{{DOCKER-SECRET:vault_token}}"
+    secrets:
+      - vault_token
+
+secrets:
+  test:
+    file: ./secrets/test
+  vault_token:
+    file: ./secrets/vault_root_token

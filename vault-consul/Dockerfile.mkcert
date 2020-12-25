@@ -1,0 +1,10 @@
+FROM golang:1.12-alpine
+
+RUN apk update --no-cache && \
+    apk upgrade --no-cache && \
+    apk add --update --no-cache git && \
+    rm -fr /var/cache/apk/*
+
+WORKDIR /root/.local/share/mkcert
+
+RUN go get -u github.com/FiloSottile/mkcert
