@@ -1,0 +1,31 @@
+#!/bin/sh -e
+
+echo "Initializing vault..."
+
+output=`vault operator init`
+
+unseal_key_1=`echo "${output}" | grep "Unseal Key 1" | awk -F'Unseal Key 1: ' '{print $2}'`
+unseal_key_2=`echo "${output}" | grep "Unseal Key 2" | awk -F'Unseal Key 2: ' '{print $2}'`
+unseal_key_3=`echo "${output}" | grep "Unseal Key 3" | awk -F'Unseal Key 3: ' '{print $2}'`
+unseal_key_4=`echo "${output}" | grep "Unseal Key 4" | awk -F'Unseal Key 4: ' '{print $2}'`
+unseal_key_5=`echo "${output}" | grep "Unseal Key 5" | awk -F'Unseal Key 5: ' '{print $2}'`
+
+root_token=`echo "${output}" | grep "Initial Root Token" | awk -F'Initial Root Token: ' '{print $2}'`
+
+echo "${unseal_key_1}" > /secrets/vault_unseal_key_1
+echo "${unseal_key_2}" > /secrets/vault_unseal_key_2
+echo "${unseal_key_3}" > /secrets/vault_unseal_key_3
+echo "${unseal_key_4}" > /secrets/vault_unseal_key_4
+echo "${unseal_key_5}" > /secrets/vault_unseal_key_5
+
+echo "${root_token}" > secrets/vault_root_token
+
+vault operator unseal ${unseal_key_1} > /dev/null
+vault operator unseal ${unseal_key_2} > /dev/null
+vault operator unseal ${unseal_key_3} > /dev/null
+
+export VAULT_TOKEN=${root_token}
+vault secrets enable -path=secret/ kv
+
+echo "Vault initialized!"
+touch /init

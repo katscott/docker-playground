@@ -1,0 +1,6 @@
+FROM vault:latest
+
+RUN apk update --no-cache && \
+    apk upgrade --no-cache && \
+    apk add --update --no-cache curl && \
+    rm -fr /var/cache/apk/*
